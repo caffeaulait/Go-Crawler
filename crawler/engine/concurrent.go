@@ -4,24 +4,25 @@ import (
 	"log"
 )
 
-type Processor func (Request) (ParseResult,error)
+type Processor func(Request) (ParseResult, error)
 
 type ConcurrentEngine struct {
-	Scheduler Scheduler
-	WorkerCount int
-	ItemChan chan Item
+	Scheduler        Scheduler
+	WorkerCount      int
+	ItemChan         chan Item
 	RequestProcessor Processor
 }
 
-func (e *ConcurrentEngine) Run(seeds ...Request)  {
+func (e *ConcurrentEngine) Run(seeds ...Request) {
 	out := make(chan ParseResult)
+	client := CreateRedisClient()
 	e.Scheduler.Run()
 
-	for i:=0; i < e.WorkerCount; i++ {
+	for i := 0; i < e.WorkerCount; i++ {
 		go e.createWorker(e.Scheduler.GetWorker(), out, e.Scheduler)
 	}
 	for _, r := range seeds {
-		if isDuplicate(r.Url) {
+		if IsDuplicate(client, r.Url) {
 			log.Printf("Duplicate request: %s", r.Url)
 			continue
 		}
@@ -30,10 +31,10 @@ func (e *ConcurrentEngine) Run(seeds ...Request)  {
 	for {
 		result := <-out
 		for _, item := range result.Items {
-			go func(i Item) {e.ItemChan <- i}(item)
+			go func(i Item) { e.ItemChan <- i }(item)
 		}
 		for _, request := range result.Requests {
-			if isDuplicate(request.Url) {
+			if IsDuplicate(client, request.Url) {
 				continue
 			}
 			e.Scheduler.Submit(request)
@@ -53,12 +54,12 @@ func (e *ConcurrentEngine) createWorker(in chan Request, out chan ParseResult, r
 	}
 }
 
-var visitedUrls = make(map[string]bool)
-
-func isDuplicate(url string) bool {
-	if visitedUrls[url] {
-		return true
-	}
-	visitedUrls[url] = true
-	return false
-}
+//var visitedUrls = make(map[string]bool)
+//
+//func isDuplicate(url string) bool {
+//	if visitedUrls[url] {
+//		return true
+//	}
+//	visitedUrls[url] = true
+//	return false
+//}
